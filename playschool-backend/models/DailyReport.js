@@ -9,7 +9,16 @@ const dailyReportSchema = new mongoose.Schema({
   health: { type: String, enum: ['good', 'sick', 'average'], default: 'good' },
   behavior: { type: String, enum: ['excellent', 'good', 'average', 'needs improvement'], default: 'good' },
   teacherNote: { type: String, default: '' },
-  date: { type: Date, default: Date.now }
-}, { timestamps: true, collection: 'DailyReport' });
+  date: { type: Date, default: Date.now },
+  // ============ ADD THIS CLASS FIELD ============
+  class: { 
+    type: String, 
+    enum: ['PKG', 'LKG', 'UKG'],
+    // default: 'PKG'
+  }
+}, { 
+  timestamps: true, 
+  collection: 'DailyReport' 
+});
 
 module.exports = mongoose.model('DailyReport', dailyReportSchema);

@@ -35,7 +35,9 @@ const getReportById = async (req, res) => {
 // @route   POST /api/dailyreports
 const createDailyReport = async (req, res) => {
   try {
+    console.log('Received data to create:', req.body);
     const report = await DailyReport.create(req.body);
+    console.log('Created report with class:', report.class);
     res.status(201).json(report);
   } catch (error) {
     console.error('Error creating report:', error);
@@ -47,6 +49,7 @@ const createDailyReport = async (req, res) => {
 // @route   PUT /api/dailyreports/:id
 const updateDailyReport = async (req, res) => {
   try {
+    console.log('Updating report with data:', req.body);
     const report = await DailyReport.findByIdAndUpdate(
       req.params.id, 
       req.body, 
@@ -58,8 +61,10 @@ const updateDailyReport = async (req, res) => {
     if (!report) {
       return res.status(404).json({ message: 'Report not found' });
     }
+    console.log('Updated report class:', report.class);
     res.status(200).json(report);
   } catch (error) {
+    console.error('Error updating report:', error);
     res.status(400).json({ message: error.message });
   }
 };
