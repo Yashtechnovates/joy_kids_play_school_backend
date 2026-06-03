@@ -5,6 +5,61 @@ const Student = require('../models/student');
 // In-memory storage for pending requests
 let pendingRequests = [];
 
+// Helper function to generate sequential roll number
+const generateRollNumber = async (className, existingStudents = null) => {
+  // Map class to prefix
+  const prefixMap = {
+    'PKG': 'PKG',
+    'LKG': 'LKG',
+    'UKG': 'UKG',
+    'Pre-KG': 'PKG'
+  };
+  
+  const prefix = prefixMap[className] || 'STU';
+  
+  // If existing students not provided, fetch from database
+  let students = existingStudents;
+  if (!students) {
+    students = await Student.find({ class: className });
+  }
+  
+  // Extract numbers from existing roll numbers for this class
+  let maxNumber = 0;
+  students.forEach(student => {
+    if (student.rollNumber && student.rollNumber.startsWith(prefix)) {
+      const numPart = student.rollNumber.replace(prefix, '');
+      const num = parseInt(numPart, 10);
+      if (!isNaN(num) && num > maxNumber) {
+        maxNumber = num;
+      }
+    }
+  });
+  
+  // Also check pending requests for this class
+  const pendingForClass = pendingRequests.filter(r => 
+    r.status === 'pending' && 
+    (r.class === className || r.class === prefix) &&
+    r.id // ensure it's a valid request
+  );
+  
+  pendingForClass.forEach(request => {
+    // Check if request already has a roll number assigned (for already approved but not saved)
+    if (request.generatedRollNumber && request.generatedRollNumber.startsWith(prefix)) {
+      const numPart = request.generatedRollNumber.replace(prefix, '');
+      const num = parseInt(numPart, 10);
+      if (!isNaN(num) && num > maxNumber) {
+        maxNumber = num;
+      }
+    }
+  });
+  
+  // Generate next number (start from 1 if none exist)
+  const nextNumber = maxNumber + 1;
+  const formattedNumber = nextNumber.toString().padStart(3, '0');
+  
+  return `${prefix}${formattedNumber}`;
+};
+
 // Submit enrollment request
 router.post('/submit', (req, res) => {
   const requestData = req.body;
@@ -44,7 +99,7 @@ router.get('/requests', (req, res) => {
   res.json({ success: true, data: filtered });
 });
 
-// Approve enrollment - Saves to Student database
+// Approve enrollment - Saves to Student database with sequential roll number
 router.put('/:id/approve', async (req, res) => {
   try {
     const index = pendingRequests.findIndex(r => r.id == req.params.id);
@@ -53,22 +108,27 @@ router.put('/:id/approve', async (req, res) => {
     }
     
     const request = pendingRequests[index];
-    
-    // Generate roll number
-    const rollNumber = `STU${Date.now()}`;
     const fullName = `${request.firstName} ${request.lastName}`;
     
-    // Map class
+    // Map class to backend format
     const classMapping = {
       'PKG': 'PKG',
       'LKG': 'LKG', 
-      'UKG': 'UKG'
+      'UKG': 'UKG',
+      'Pre-KG': 'PKG'
     };
+    const backendClass = classMapping[request.class] || request.class;
+    
+    // Get existing students to generate proper roll number
+    const existingStudents = await Student.find({ class: backendClass });
+    
+    // Generate sequential roll number
+    const rollNumber = await generateRollNumber(backendClass, existingStudents);
     
     console.log('Creating student with data:', {
       name: fullName,
       rollNumber: rollNumber,
-      class: classMapping[request.class] || request.class,
+      class: backendClass,
       contact: request.phoneNumber,
       email: request.email,
       parentEmail: request.parentEmail,
@@ -84,7 +144,7 @@ router.put('/:id/approve', async (req, res) => {
     const newStudent = await Student.create({
       name: fullName,
       rollNumber: rollNumber,
-      class: classMapping[request.class] || request.class,
+      class: backendClass,
       contact: request.phoneNumber,
       email: request.email,
       parentEmail: request.parentEmail,
@@ -97,18 +157,20 @@ router.put('/:id/approve', async (req, res) => {
       dateOfBirth: request.dateOfBirth
     });
     
-    // Update request status
+    // Update request status with generated roll number
     pendingRequests[index].status = 'approved';
     pendingRequests[index].reviewedAt = new Date().toISOString();
     pendingRequests[index].studentId = newStudent._id;
+    pendingRequests[index].generatedRollNumber = rollNumber;
     
     console.log(`✅ Student saved to database with ID: ${newStudent._id}`);
     console.log(`   Name: ${fullName}, Roll: ${rollNumber}`);
     
     res.json({
       success: true,
-      message: 'Enrollment approved and student added to database',
-      student: newStudent
+      message: `Enrollment approved! Roll Number: ${rollNumber}`,
+      student: newStudent,
+      rollNumber: rollNumber
     });
   } catch (error) {
     console.error('Error approving enrollment:', error);
